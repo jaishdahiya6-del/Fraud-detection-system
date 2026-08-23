@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+data/creditcard.csv
+models/*.pkl
+models/*.csv
+.venv/
+.env
+.DS_Store
