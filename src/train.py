@@ -1,4 +1,7 @@
-"""Train multiple models with different imbalance-handling strategies."""
+"""Train multiple classification models with various class imbalance handling strategies."""
+import os
+import logging
+from typing import Tuple, Dict, Any, List, Optional
 import joblib
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
@@ -12,11 +15,12 @@ from imblearn.combine import SMOTETomek
 from data_preprocessing import preprocess_pipeline
 from evaluate import evaluate_model
 
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+
 RANDOM_STATE = 42
 
-# max_depth caps and modest tree counts keep runtime reasonable on 250k+ row
-# datasets (SMOTE/oversample can double the training set size) while still
-# giving representative, non-hardcoded performance.
 MODELS = {
     "Logistic Regression": LogisticRegression(max_iter=1000, random_state=RANDOM_STATE),
     "Decision Tree": DecisionTreeClassifier(max_depth=12, random_state=RANDOM_STATE),
@@ -29,10 +33,6 @@ MODELS = {
     ),
 }
 
-# SMOTE + Tomek Links is kept available (see resample()) but excluded from
-# the default grid below: Tomek-link removal needs nearest-neighbour search
-# over the whole resampled set, which is very slow on 250k+ row datasets.
-# Plain SMOTE already covers the "synthetic minority oversampling" objective.
 RESAMPLERS = {
     "baseline": None,
     "undersample": RandomUnderSampler(random_state=RANDOM_STATE),
@@ -44,7 +44,8 @@ RESAMPLERS = {
 ACTIVE_RESAMPLERS = ["baseline", "undersample", "oversample", "smote"]
 
 
-def get_class_weighted_models():
+def get_class_weighted_models() -> Dict[str, Any]:
+    """Return dict of model instances configured with class weighting."""
     return {
         "Logistic Regression (weighted)": LogisticRegression(
             max_iter=1000, class_weight="balanced", random_state=RANDOM_STATE
@@ -59,14 +60,18 @@ def get_class_weighted_models():
     }
 
 
-def resample(X_train, y_train, method: str):
+def resample(X_train: pd.DataFrame, y_train: pd.Series, method: str) -> Tuple[pd.DataFrame, pd.Series]:
+    """Apply specified resampling strategy to training data."""
     sampler = RESAMPLERS.get(method)
     if sampler is None:
         return X_train, y_train
+    logger.info(f"Applying resampling strategy: {method}")
     return sampler.fit_resample(X_train, y_train)
 
 
-def run_experiments(data_path="data/creditcard.csv", verbose=True):
+def run_experiments(
+    data_path: str = "data/creditcard.csv", verbose: bool = True
+) -> Tuple[pd.DataFrame, Any, str, Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series, Any]]:
     """Train baseline + imbalance-handled models, return comparison table + best model."""
     X_train, X_test, y_train, y_test, scaler = preprocess_pipeline(data_path)
 
@@ -78,7 +83,7 @@ def run_experiments(data_path="data/creditcard.csv", verbose=True):
         for name, model in MODELS.items():
             key = f"{name} [{resample_method}]"
             if verbose:
-                print(f"Training {key} ...")
+                logger.info(f"Training {key} ...")
             model.fit(Xr, yr)
             metrics = evaluate_model(model, X_test, y_test)
             metrics["model"] = key
@@ -88,7 +93,7 @@ def run_experiments(data_path="data/creditcard.csv", verbose=True):
     # class-weighted models trained on original (unresampled) data
     for name, model in get_class_weighted_models().items():
         if verbose:
-            print(f"Training {name} ...")
+            logger.info(f"Training {name} ...")
         model.fit(X_train, y_train)
         metrics = evaluate_model(model, X_test, y_test)
         metrics["model"] = name
@@ -104,14 +109,21 @@ def run_experiments(data_path="data/creditcard.csv", verbose=True):
     return comparison_df, best_model, best_name, (X_train, X_test, y_train, y_test, scaler)
 
 
-def save_model(model, scaler, path="models/best_model.pkl"):
+def save_model(model: Any, scaler: Any, path: str = "models/best_model.pkl") -> None:
+    """Save model and scaler bundle to path, creating directories as needed."""
+    dir_name = os.path.dirname(path)
+    if dir_name:
+        os.makedirs(dir_name, exist_ok=True)
+    logger.info(f"Saving model bundle to {path}...")
     joblib.dump({"model": model, "scaler": scaler}, path)
 
 
 if __name__ == "__main__":
     comparison_df, best_model, best_name, splits = run_experiments()
-    print(comparison_df)
-    print(f"\nBest model: {best_name}")
+    logger.info("\n" + str(comparison_df))
+    logger.info(f"\nBest model: {best_name}")
     _, _, _, _, scaler = splits
     save_model(best_model, scaler)
+
+    os.makedirs("models", exist_ok=True)
     comparison_df.to_csv("models/model_comparison.csv")

@@ -1,9 +1,26 @@
+# Python / Bytecode
 __pycache__/
 *.pyc
-.ipynb_checkpoints/
-data/creditcard.csv
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Data & Models (ignore raw large CSVs and output artifacts except documentation)
+data/*.csv
+!data/README.md
 models/*.pkl
 models/*.csv
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Virtual Environments & IDE
 .venv/
+env/
+venv/
 .env
 .DS_Store
+.idea/
+.vscode/
